@@ -5,10 +5,16 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired
 import requests
+import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
 Bootstrap(app)
+
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
 
 # create database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///movies.db'
@@ -36,10 +42,34 @@ class RateMovieForm(FlaskForm):
     submit = SubmitField("Done")
 
 
+class AddMovieForm(FlaskForm):
+    title = StringField("Movie Title")
+    submit = SubmitField("Add Movie")
+
+
 @app.route("/")
 def home():
     movies_list = db.session.query(Movie).all()
     return render_template("index.html", movies=movies_list)
+
+
+@app.route('/add', methods=['GET', 'POST'])
+def add_movie():
+    form = AddMovieForm()
+
+    if form.validate_on_submit():
+        movie_title = form.title.data
+        # parameters to pass to url
+        params = {
+            "api_key": API_KEY,
+            "query": movie_title
+        }
+        response = requests.get(url=MOVIE_URL, params=params)
+        response.raise_for_status()
+        data = response.json()["results"]
+        return render_template("select.html", options=data)
+
+    return render_template("add.html", form=form)
 
 
 # without WTForms
@@ -58,6 +88,7 @@ def home():
 #     movie_selected = Movie.query.get(movie_id)
 #
 #     return render_template('edit.html', movie=movie_selected)
+
 
 # with WTForms
 @app.route("/edit", methods=['GET', 'POST'])
