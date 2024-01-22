@@ -18,6 +18,7 @@ MOVIE_URL = "https://api.themoviedb.org/3/search/movie"
 
 # create database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///movies.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # create table
@@ -27,9 +28,9 @@ with app.app_context():
         title = db.Column(db.String(250), unique=True, nullable=False)
         year = db.Column(db.String(250), nullable=False)
         description = db.Column(db.String(250), nullable=False)
-        rating = db.Column(db.Float, nullable=False)
-        ranking = db.Column(db.Integer, nullable=False)
-        review = db.Column(db.String(250), nullable=False)
+        rating = db.Column(db.Float, nullable=True)
+        ranking = db.Column(db.Integer, nullable=True)
+        review = db.Column(db.String(250), nullable=True)
         img_url = db.Column(db.String(250), nullable=False)
 
     db.create_all()
@@ -43,13 +44,19 @@ class RateMovieForm(FlaskForm):
 
 
 class AddMovieForm(FlaskForm):
-    title = StringField("Movie Title")
+    title = StringField("Movie Title", validators=[DataRequired()])
     submit = SubmitField("Add Movie")
 
 
 @app.route("/")
 def home():
-    movies_list = db.session.query(Movie).all()
+    # sort movie according to its rating
+    movies_list = Movie.query.order_by(Movie.rating).all()
+
+    for i in range(len(movies_list)):
+        movies_list[i].ranking = len(movies_list) - i
+
+    db.session.commit()
     return render_template("index.html", movies=movies_list)
 
 
@@ -70,6 +77,32 @@ def add_movie():
         return render_template("select.html", options=data)
 
     return render_template("add.html", form=form)
+
+
+@app.route("/select_movie", methods=["GET", "POST"])
+def select_movie():
+    movie_id = request.args.get('id')
+    if movie_id:
+        movie_detail_url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+        params = {
+            "api_key": API_KEY
+        }
+        response = requests.get(url=movie_detail_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        new_movie = Movie(
+            title=data['title'],
+            year=data['release_date'].split("-")[0],
+            img_url=f"https://image.tmdb.org/t/p/original{data['poster_path']}",
+            description=data['overview']
+        )
+        if app.app_context():
+            db.session.add(new_movie)
+            db.session.commit()
+
+        return redirect(url_for('rate_movie', id=new_movie.id))
+
+    return render_template("select.html")
 
 
 # without WTForms
